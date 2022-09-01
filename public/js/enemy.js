@@ -1,8 +1,8 @@
-const Enemy = Object.freeze({
+export const Enemy = Object.freeze({
   SandFlea: Symbol("sandflea"),
 });
 
-const EnemyData = {
+export const EnemyData = {
   [Enemy.SandFlea]: {
     health: 10,
     speed: 50,

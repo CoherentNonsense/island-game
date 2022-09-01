@@ -2,6 +2,7 @@ export const Location = Object.freeze({
   Start: Symbol("start"),
   Dummies: Symbol("dummies"),
   TutPort: Symbol("tutport"),
+  CrossRoad: Symbol("crossroad"),
   Statue: Symbol("statue"),
   Trees: Symbol("trees"),
   ForestN: Symbol("forestN"),
@@ -20,20 +21,37 @@ export const Location = Object.freeze({
 
 export const LocationData = {
   [Location.Start]: {
-    name: "Tutorial Island",
     position: [22, 142],
     players: [],
   },
   [Location.Dummies]: {
-    name: "Fighting Dummies",
     position: [14, 126],
     players: [],
   },
   [Location.TutPort]: {
     position: [46, 129],
-    name: "Port",
     players: [],
-  }
+  },
+  [Location.CityLg]: {
+    position: [101, 140],
+    players: [],
+  },
+  [Location.CrossRoad]: {
+    position: [122, 132],
+    players: [],
+  },
+  [Location.Statue]: {
+    position: [117, 119],
+    players: [],
+  },
+  [Location.CityMd]: {
+    position: [142, 112],
+    players: [],
+  },
+  [Location.Trees]: {
+    position: [88, 118],
+    players: [],
+  },
 };
 
 export function enterLocation(username, location) {
@@ -50,5 +68,10 @@ export function enterLocation(username, location) {
 export const worldGraph = {
   [Location.Start]: [Location.Dummies, Location.TutPort],
   [Location.Dummies]: [Location.Start, Location.TutPort],
-  [Location.TutPort]: [Location.Dummies, Location.Start]
+  [Location.TutPort]: [Location.Dummies, Location.Start, Location.CityLg],
+  [Location.CityLg]: [Location.TutPort, Location.CrossRoad],
+  [Location.CrossRoad]: [Location.CityLg, Location.Statue, Location.CityMd],
+  [Location.Statue]: [Location.CrossRoad],
+  [Location.CityMd]: [Location.CrossRoad],
+  [Location.Trees]: [Location.CrossRoad],
 }

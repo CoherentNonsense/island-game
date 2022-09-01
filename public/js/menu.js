@@ -9,9 +9,10 @@ export class Option {
 export class SubMenu {
   constructor(options, config = {}) {
     this.options = options;
-    this.message = config.message || "";
+    this.message = config.message || [];
     this.inputMode = config.inputMode || false;
-    this.inputLine = config.inputLine || config.message.length || 0;
+    this.inputLine = config.inputLine || this.message.length;
+    this.dontClearMessages = config.dontClearMessages || false;
   }
 }
 
@@ -24,16 +25,32 @@ export class Menu {
     this.inputMode = false;
     this.inputLine = 0;
     this.input = "";
+    this.talking = [];
     this.defaultImg = config.img;
     this.defaultAnim = config.anim;
+    this.talkingMode = config.talkingMode || false;
+
+    if (!config.disableTalk) {
+      this.submenus[this.current].options.splice(this.submenus[this.current].options.length - 1, 0, new Option("Talk", "talk"));
+      this.submenus["talk"] = new SubMenu([
+        new Option("Speak", "", () => {
+          this.talk(this.input);
+        }),
+        new Option("Back", this.current)
+      ], { inputMode: true, inputLine: 5 });
+    }
   }
 
   currentOptions() {
     return this.submenus[this.current].options;
   }
 
-  pushMessage(message) {
-    this.messages.push(message);
+  currentMessages() {
+    if (this.talkingMode || this.current === "talk") {
+      return this.talking;
+    }
+
+    return this.messages;
   }
 
   moveUp() {
@@ -48,20 +65,46 @@ export class Menu {
     }
   }
 
+  talk(message) {
+    this.talking.push(message);
+    if (this.messages.length > 5) {
+      this.messages.splice(0, 1);
+    }
+  }
+
+  pushMessage(message) {
+    this.messages.push(message);
+    if (this.messages.length > 6) {
+      this.messages.splice(0, 1);
+    }
+  }
+
   select(gameData) {
     const option = this.currentOptions()[this.index];
-    option.onclick(gameData);
-    this.current = option.to;
-    
-    // submenu data
-    const submenu = this.submenus[this.current];
-    this.messages = submenu.message;
-    this.inputMode = submenu.inputMode;
-    this.inputLine = submenu.inputLine;
+    let submenuId = option.to;
+    const onclickId = option.onclick(gameData);
+    if (typeof onclickId === "string") submenuId = onclickId;
 
     // reset data
     this.index = 0;
     this.input = "";
+
+    if (submenuId === "") return;
+    
+    this.current = submenuId;
+    
+    // submenu data
+    const submenu = this.submenus[this.current];
+    if (!submenu.dontClearMessages) {
+      this.messages = [...submenu.message];
+    }
+
+    if (this.talkingMode) {
+      submenu.message.forEach(text => this.talk(text));
+    }
+
+    this.inputMode = submenu.inputMode;
+    this.inputLine = submenu.inputLine;
   }
 
   drawDisplay(renderer, time) {

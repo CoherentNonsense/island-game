@@ -1,31 +1,35 @@
-import Input from "./input.js";
-import { locationToMenu, startMenu, titleMenu } from "./menus.js";
-import Packet from "./packet.js";
+import { Enemy, EnemyData } from "./enemy.js";
+import { combatMenuBuilder, locationToMenu, titleMenu } from "./menus.js";
 import { LocationData, Location, worldGraph } from "./world.js";
 
 
 export const GameState = Object.freeze({
-  Title:      Symbol("title"),
   Map:        Symbol("map"),
   Travel:     Symbol("travel"),
   Combat:     Symbol("combat"),
   Location:   Symbol("location")
 });
 
-const input = new Input();
-
-let party = [];
 
 const gameData = {
-  state: GameState.Title,
+  isHost: false,
+  username: "",
+
+  state: GameState.Location,
   currentMenu: titleMenu,
   currentLocation: Location.Start,
   locationSelected: 0,
-
+  
+  gold: 0,
+  items: [{name: "Hands", damage: 5}],
+  
   enemy: {},
+  combatMenu: null,
 };
 
 
+// Helper Functions
+// ----------------
 function drawMenu(renderer, time, menu) {
   renderer.fillRect("#080808", 0, 80, 160, 80);
 
@@ -34,7 +38,7 @@ function drawMenu(renderer, time, menu) {
     renderer.drawText(83, 2 + (13 * idx), text);
   });
 
-  menu.messages.forEach((message, idx) => {
+  menu.currentMessages().forEach((message, idx) => {
     renderer.drawText(3, 83 + (13 * idx), message);
   });
 
@@ -46,10 +50,19 @@ function drawMenu(renderer, time, menu) {
   renderer.drawText(3, 83 + (13 * menu.inputLine), menu.input + (flash === 1 ? String.fromCharCode(179) : ""));
 }
 
+function enterCombat(enemy) {
+  gameData.enemy = {...EnemyData[enemy]};
+  const combatMenu = combatMenuBuilder(gameData, "You've been monst'd");
+  gameData.combatMenu = combatMenu;
+  gameData.state = GameState.Combat;
+}
+
 
 // Main Game Tick
 // --------------
-export function gameTick(time, client, renderer) {  
+export function gameTick(time, client, renderer, input) {  
+
+  // Handle Multiplayer
   client.pollIncomingPackets((packet) => {
     const packetId = packet.readNumber();
 
@@ -63,10 +76,12 @@ export function gameTick(time, client, renderer) {
     }
   });
 
-  // Handle Menu Navigation
+  // Handle Input
   if (input.keys.down) {
     if (gameData.state === GameState.Map) {
       gameData.locationSelected = (gameData.locationSelected + 1) % worldGraph[gameData.currentLocation].length;
+    } else if (gameData.state === GameState.Combat) {
+      gameData.combatMenu.moveDown();
     } else {
       gameData.currentMenu.moveDown();
     }
@@ -74,7 +89,12 @@ export function gameTick(time, client, renderer) {
 
   if (input.keys.up) {
     if (gameData.state === GameState.Map) {
-      gameData.locationSelected = (gameData.locationSelected + 1) % worldGraph[gameData.currentLocation].length;
+      gameData.locationSelected = (gameData.locationSelected - 1) % worldGraph[gameData.currentLocation].length;
+      if (gameData.locationSelected < 0) {
+        gameData.locationSelected += worldGraph[gameData.currentLocation].length;
+      }
+    } else if (gameData.state === GameState.Combat) {
+      gameData.combatMenu.moveUp();
     } else {
       gameData.currentMenu.moveUp();
     }
@@ -86,11 +106,13 @@ export function gameTick(time, client, renderer) {
       gameData.currentLocation = moveableLocations[gameData.locationSelected]
       gameData.currentMenu = locationToMenu[gameData.currentLocation];
       gameData.locationSelected = 0;
-      if (Math.random() > 100) {
-        gameData.state = GameState.Combat;
+      if (gameData.currentLocation === Location.CityLg) {
+        enterCombat(Enemy.SandFlea);
       } else {
-        gameData.state = GameState.Title;
+        gameData.state = GameState.Location;
       }
+    } else if (gameData.state === GameState.Combat) {
+      gameData.combatMenu.select(gameData);
     } else {
       gameData.currentMenu.select(gameData);
     }
@@ -101,8 +123,12 @@ export function gameTick(time, client, renderer) {
   renderer.fill("#000");
 
   switch (gameData.state) {
-    case GameState.Title:
+    case GameState.Location:
       drawMenu(renderer, time, gameData.currentMenu);
+      break;
+    
+    case GameState.Combat:
+      drawMenu(renderer, time, gameData.combatMenu);
       break;
 
     case GameState.Map: {
@@ -129,17 +155,12 @@ export function gameTick(time, client, renderer) {
       break;
     }
 
-    case GameState.Combat: {
-      
-    }
-
     default:
       break;
   }
 
   input.flush();
 }
-
 
 
 // Handle typing
