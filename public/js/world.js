@@ -18,12 +18,7 @@ export const Location = Object.freeze({
   Tower: Symbol("tower"),  
 });
 
-const Options = Object.freeze({
-  Enter: Symbol("enter"),
-  Fight: Symbol("fight"),
-});
-
-export const Locations = {
+export const LocationData = {
   [Location.Start]: {
     name: "Tutorial Island",
     position: [22, 142],
@@ -31,9 +26,8 @@ export const Locations = {
   },
   [Location.Dummies]: {
     name: "Fighting Dummies",
-    position: [14, 124],
+    position: [14, 126],
     players: [],
-    options: [Options.Fight],
   },
   [Location.TutPort]: {
     position: [46, 129],
@@ -42,9 +36,19 @@ export const Locations = {
   }
 };
 
+export function enterLocation(username, location) {
+  if (!Location[location].players.find(currentUsername => currentUsername === username)) {
+    LocationData[location].players.push(username);
+    return true;
+  }
+
+  return false;
+}
+
 
 // A directed graph between locations
-export const worldGraph = new Map();
-worldGraph.set(Location.Start, [Location.Dummies]);
-worldGraph.set(Location.Dummies, [Location.Start, Location.TutPort]);
-worldGraph.set(Location.TutPort, [Location.Dummies]);
+export const worldGraph = {
+  [Location.Start]: [Location.Dummies, Location.TutPort],
+  [Location.Dummies]: [Location.Start, Location.TutPort],
+  [Location.TutPort]: [Location.Dummies, Location.Start]
+}

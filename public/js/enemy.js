@@ -1,23 +1,11 @@
-// Spider
-// Undead
-// Ice Slime
-// Yeti
-// Dragon
-// Sand Flea
-// Tree
-// Statue
-// Dummy
+const Enemy = Object.freeze({
+  SandFlea: Symbol("sandflea"),
+});
 
-const enemyTypes = {
-  "spider": {
-    name: "Giant Spider",
-    health: 50,
-    
-  },
-}
-
-class Enemy {
-  constructor() {
-    this.health
+const EnemyData = {
+  [Enemy.SandFlea]: {
+    health: 10,
+    speed: 50,
+    damage: 1,
   }
 }

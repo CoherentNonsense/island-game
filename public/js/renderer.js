@@ -5,13 +5,50 @@ export default class Renderer {
     this.size = 0;
     this.scale = 0;
 
+    this.images = new Map();
+    this.anims = new Map();
+
     addEventListener("resize", () => this.resize());
     this.resize();
   }
 
-  draw(image, u, v, width, height, x, y) {
+  async loadImages(imageNames) {
+    const promises = [];
+    for (let i = 0; i < imageNames.length; ++i) {
+      promises.push(new Promise(resolve => {
+        this.images.set(imageNames[i], new Image());
+        this.images.get(imageNames[i]).src = `assets/${imageNames[i]}.png`;
+        this.images.get(imageNames[i]).onload = () => {
+          resolve();
+        };
+      }));
+    }
+
+    return Promise.all(promises);
+  }
+
+  async loadAnim(name, duration) {
+    const images = [];
+    for (let i = 0; i < duration; ++i) {
+      images.push(name + (i + 1));
+    }
+    this.anims.set(name, duration);
+    return this.loadImages(images);
+  }
+
+  fill(color) {
+    this.context.fillStyle = color;
+    this.context.fillRect(0, 0, this.canvas.width, this.canvas.height);
+  }
+
+  fillRect(color, x, y, width, height) {
+    this.context.fillStyle = color;
+    this.context.fillRect(x * this.scale, y * this.scale, width * this.scale, height * this.scale);
+  }
+
+  draw(imageName, u, v, width, height, x, y) {
     this.context.drawImage(
-      image,
+      this.images.get(imageName),
       u,
       v,
       width,
@@ -23,7 +60,13 @@ export default class Renderer {
     );
   }
 
-  drawText(font, x, y, text) {
+  drawAnim(animName, u, v, width, height, x, y, time, speed) {
+    const frame = Math.floor((time * speed) % this.anims.get(animName)) + 1;
+    this.draw(animName + frame, u, v, width, height, x, y);
+  }
+
+  drawText(x, y, text) {
+    if (this.images.get("font") === undefined) return new Error("Must load font.png to draw text");
     for (let i = 0; i < text.length; ++i) {
       const charCode = text.charCodeAt(i);
       const uv = {
@@ -31,7 +74,7 @@ export default class Renderer {
         y: Math.floor(charCode / 16)
       }
       this.context.drawImage(
-        font,
+        this.images.get("font"),
         uv.x * 9,
         uv.y * 9,
         9,

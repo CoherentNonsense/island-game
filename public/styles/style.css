@@ -4,43 +4,11 @@
 }
 
 body {
-  background-color: #0a0a0a;
+  background-color: #111;
   overflow: hidden;
 }
 
 canvas {
   display: block;
   margin: 0 auto;
-}
-
-#btns {
-  display: flex;
-  justify-content: space-evenly;
-  margin: 0 auto;
-}
-
-button {
-  border: none;
-  background-color: rgba(0.0, 0.0, 0.0, 0.0);
-  background-size: contain;
-  background-repeat: no-repeat;
-  image-rendering: pixelated;
-  width: 170px;
-  height: 60px;
-}
-
-button:hover {
-  cursor: pointer;
-}
-
-#host-btn {
-  background-image: url("../assets/host-btn.png");
-}
-
-#join-btn {
-  background-image: url("../assets/join-btn.png");
-}
-
-#move-btn {
-  background-image: url("../assets/move-btn.png");
 }
