@@ -1,6 +1,19 @@
-# Submission for olc::CodeJam
+# Island Game
 
-(if i finish)
+Tiny RPG adventure set on a island with 'dynamic' terrain based on the weather. 
+
+<hr>
+
+## Submission for olc::CodeJam
+
+[Itch.io Page](https://itch.io/jam/olc-codejam-2022)
+
+## Screenshots
+
+
+![game thumbnail](/misc/seasons.gif)
+
+![game thumbnail](/misc/temp.gif)
 
 
 ## Packet Protocol
@@ -21,6 +34,7 @@ Writing this down here so I can reference it.
 |004|leave location|[userId: number]|
 |005|speak|[message: string]|
 |__host messages__|
+|n/a|
 |__server messages__|
 |200|game ended|[]|
 |201|host id doesn't exist|[]|
