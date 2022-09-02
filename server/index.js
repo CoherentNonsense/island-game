@@ -1,9 +1,11 @@
 const uWS = require("uWebSockets.js");
 const fs = require("fs");
 
-let games = [];
+let games = {};
+let nextId = 0;
+let freeIds = [];
 
-function broadcast(ws, gameId, message, isBinary) {
+function broadcast(ws, gameId, message, isBinary = true) {
   for (let i = 0; i < games[gameId].length; ++i) {
     if (ws !== games[gameId][i]) {
       games[gameId][i].send(message, isBinary);
@@ -11,14 +13,40 @@ function broadcast(ws, gameId, message, isBinary) {
   }
 }
 
-function isHostingGame(ws) {
-  for (let i = 0; i < games.length; ++i) {
-    if (games[i][0] === ws) {
-      return true;
-    }
+function getString(message, offset) {
+  const view = new Uint8Array(message);
+  const length = view[offset];
+  let string = "";
+  for (let i = 0; i < length; ++i) {
+    if (view[offset + 1 + i] === undefined) break;
+    string += String.fromCharCode(view[offset + 1 + i]);
   }
 
-  return false;
+  return string;
+}
+
+function leave(ws) {
+  if (ws.gameId === undefined) return;
+
+  // check if host
+  if (games[ws.gameId][0] === ws) {
+    const packet = new ArrayBuffer(4);
+    const view = new Int32Array(packet);
+    view[0] = 200;
+    broadcast(ws, ws.gameId, packet);
+    const gameId = ws.gameId;
+    games[gameId].forEach(socket => delete socket.gameId);
+    delete games[gameId];
+  } else {
+    const packet = new ArrayBuffer(8);
+    const view = new Int32Array(packet);
+    view[0] = 202;
+    view[1] = ws.id;
+    broadcast(ws, ws.gameId, packet);
+    games[ws.gameId] = games[ws.gameId].filter(socket => socket !== ws);
+    delete ws.gameId;
+  }
+
 }
 
 
@@ -29,31 +57,62 @@ uWS.App().ws("/*", {
 
   open: (ws) => {
     console.log("A WebSocket connected!");
+
+    if (freeIds.length === 0) {
+      ws.id = nextId++;
+    } else {
+      ws.id = freeIds.pop();
+    }
+
+    const packet = new ArrayBuffer(8);
+    const view = new Int32Array(packet);
+    view[0] = 203;
+    view[1] = ws.id;
+    ws.send(packet, true);
   },
   message: (ws, message, isBinary) => {
     /* Ok is false if backpressure was built up, wait for drain */
-    const view = new Uint8Array(message);
+    const view = new Int32Array(message);
     const packetType = view[0];
-    console.log(view)
-    return;
+    
     switch (packetType) {
-      case 0: { // Host Game
-        if (isHostingGame(ws)) return;
-        const gameId = games.length;
+
+      // Host Game
+      case 0: {
+        if (ws.gameId !== undefined) return;
+
+        const gameId = getString(message, 4);
         games[gameId] = [ws];
-        const packet = new Int32Array([100, gameId]);
-        ws.send(packet, isBinary);
+        ws.gameId = gameId;
         break;
       }
-      case 1: { // Join Game
-        const gameId = view[1];
-        if (games[gameId] !== undefined && games[gameId].findIndex(socket => socket === ws) === -1) {
-          games[gameId].push(ws);
-          games[gameId][0].send(message, isBinary);
+
+      // Join Game
+      case 1: {
+        if (ws.gameId !== undefined) return;
+
+        const gameId = getString(message, 4);
+        if (games[gameId] === undefined) {
+          const packet = new ArrayBuffer(4);
+          const view = new Int32Array(packet);
+          view[0] = 201;
+          ws.send(packet, isBinary);
+          break;
         }
+
+        games[gameId].push(ws);
+        games[gameId][0].send(message, isBinary);
+        ws.gameId = gameId;
         break;
       }
+
+      // Leave Game
+      case 2:
+        leave(ws);
+        break;
+
       default:
+        broadcast(ws, ws.gameId, message, isBinary);
         break;
     }
 
@@ -62,14 +121,11 @@ uWS.App().ws("/*", {
   drain: (ws) => {
     console.log("WebSocket backpressure: " + ws.getBufferedAmount());
   },
-  close: (ws, code, message) => {
+  close: (ws, _code, _message) => {
     console.log("WebSocket closed");
-    games = games.filter((game) => {
-      if (ws === game[0]) {
-        console.log("Ending Game");
-      }
-      return ws !== game[0];
-    });
+    freeIds.push(ws.id);
+    leave(ws);
+    console.log(games);
   }
 }).get("/*", (res, req) => {
   res.onAborted(() => {
@@ -95,4 +151,4 @@ uWS.App().ws("/*", {
   });
 }).listen(8080, (token) => {
   console.log("Starting server", token);
-})
+});

@@ -70,7 +70,7 @@ export const titleMenu = new Menu({
         if (game.isHost) {
           packet.writeNumber(0).writeString(game.hostId);
         } else {
-          packet.writeNumber(1).writeString(game.hostId).writeString(game.username);
+          packet.writeNumber(1).writeString(game.hostId);
         }
         game.client.sendPacket(packet);
       }
@@ -78,6 +78,7 @@ export const titleMenu = new Menu({
       // Start Intro
       game.party = [game.username];
       game.state = GameState.Intro;
+      game.currentLocation = Location.Start;
       game.screenAnimStart = game.time;
     }),
     new Option("Back", "title")
@@ -158,7 +159,7 @@ export const startMenu = new Menu({
     message: ["temporary words"]
   })
 
-});
+}, { location: Location.Start });
 
 // Dummies
 export const dummiesMenu = new Menu({
@@ -170,7 +171,7 @@ export const dummiesMenu = new Menu({
     message: ["A pair of", "fighting dummies", "are loosely held", "in the sand"]
   }),
 
-});
+}, { location: Location.Dummies });
 
 // TutPort
 export const tutPortMenu = new Menu({
@@ -189,7 +190,7 @@ export const tutPortMenu = new Menu({
     message: ["Are you sure?", "You wont be able", "to return here"]
   })
 
-});
+}, { location: Location.TutPort });
 
 // CityLg
 export const cityLgMenu = new Menu({
@@ -213,7 +214,7 @@ export const cityLgMenu = new Menu({
     message: ["A shiny red", "apple.", "Restores 3 health"]
   })
 
-});
+}, { location: Location.CityLg });
 
 
 // Crossroad
@@ -225,7 +226,7 @@ export const crossRoadMenu = new Menu({
     message: ["A fork in the", "road"]
   }),
 
-});
+}, { location: Location.CrossRoad });
 
 
 // Statue
@@ -237,7 +238,7 @@ export const statueMenu = new Menu({
     message: ["a statue"]
   }),
 
-});
+}, { location: Location.Statue });
 
 
 export const locationToMenu = {

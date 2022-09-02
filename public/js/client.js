@@ -41,11 +41,11 @@ export default class Client {
   }
 
   sendPacket(packet) {
+    if (!this.socket || this.socket.readyState !== this.socket.OPEN) return;
     this.socket.send(packet.data());
   }
 
   _handleMessage(message) {
-    console.log("Received Message");
     const packet = new Packet(message.data);
     this.incomingMessages.push(packet);
   }

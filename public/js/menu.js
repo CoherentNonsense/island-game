@@ -1,3 +1,5 @@
+import { LocationData } from "./world.js";
+
 export class Option {
   constructor(name, to, onclick = () => {}) {
     this.name = name;
@@ -31,6 +33,7 @@ export class Menu {
     this.defaultAnim = config.anim;
     this.defaultAnimSpeed = config.animSpeed || 0.003;
     this.talkingMode = config.talkingMode || false;
+    this.location = config.location;
 
     if (!config.disableTalk) {
       const option = new Option("Talk", "talk", game => {
@@ -137,6 +140,12 @@ export class Menu {
       renderer.drawAnim(this.defaultAnim, 0, 0, 80, 80, 0, 0, time, this.defaultAnimSpeed);
     } else if (this.defaultImg) {
       renderer.draw(this.defaultImg, 0, 0, 80, 80, 0, 0);
+    }
+
+    if (this.location) {
+      if (LocationData[this.location].players.length < 1 && !this.submenus[this.current].img) {
+        renderer.draw("other", 0, 0, 80, 80, 0, 0);
+      }
     }
   }
 }

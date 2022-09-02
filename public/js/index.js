@@ -24,6 +24,7 @@ async function main() {
       "console",
 
       // Map
+      "other",
       "spritesheet",
       "map_mtnsnow",
       "map_snow",

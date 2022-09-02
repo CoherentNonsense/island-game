@@ -1,7 +1,8 @@
 import Client from "./client.js";
 import { Enemy, EnemyData } from "./enemy.js";
 import { combatMenuBuilder, locationToMenu, startMenu, titleMenu } from "./menus.js";
-import { LocationData, Location, worldGraph } from "./world.js";
+import Packet from "./packet.js";
+import { LocationData, Location, worldGraph, LocationToId } from "./world.js";
 
 export const GameState = Object.freeze({
   Intro:      Symbol("intro"),
@@ -11,35 +12,34 @@ export const GameState = Object.freeze({
   Location:   Symbol("location")
 });
 
-
 const gameData = {
   isOffline: false,
   isHost: false,
+  id: -1,
   hostId: "",
   client: new Client(),
+  time: 0,
 
+  state: GameState.Location,
+  currentMenu: titleMenu,
+  
   username: "",
   maxHealth: 15,
   health: 15,
-
-  time: 0,
+  gold: 0,
+  party: [],
 
   talkTutorial: true,
   mapTutorial: true,
 
-  party: [],
+  weather: "Summer",
+  changeRequest: false,  
 
   lastCity: Location.CityLg,
-
-  weather: "Summer",
-  changeRequest: false,
-
-  state: GameState.Location,
-  currentMenu: titleMenu,
-  currentLocation: Location.Start,
+  inLocation: false,
+  currentLocation: null,
   locationSelected: 0,
   
-  gold: 0,
   items: [{name: "Hands", damage: 3, speed: 5}],
   
   screenAnimStart: 0,
@@ -148,9 +148,55 @@ function drawScreenAnim(renderer, time) {
 export function gameTick(time, renderer, input) {
   gameData.time = time;
 
+  // Handle Multiplayer
+  gameData.client.pollIncomingPackets((packet) => {
+    const packetId = packet.readNumber();
+
+    switch (packetId) {
+      case 1: { // Join Game
+        // Disregard gameId (should do this on server but code jam)
+        packet.readString();
+        break;
+      }
+
+      // Game Ended
+      case 200:
+        console.log("Game ended");
+        break;
+
+      // Host Id doesn't exist
+      case 201:
+        gameData.state = GameState.Location;
+        gameData.currentMenu.select(gameData, "title");
+        gameData.currentMenu.messages = ["That host ID", "doesn't exist"];
+        break;
+
+      // Player left
+      case 202:
+        console.log("player left");
+        console.log(packet.readNumber());
+        break;
+
+      // Receive userId
+      case 203:
+        gameData.id = packet.readNumber();
+        console.log("Received User ID: " + gameData.id);
+        break;
+
+      // Test
+      case 50:
+        console.log("AYY");
+        break;
+
+      default:
+        break;
+    }
+  });
+
   // Intro
   if (gameData.state === GameState.Intro) {
     gameData.screenAnimType = "intro";
+    renderer.fillRect("#000", 0, 0, 160, 160);
     renderer.drawAnim("intro", 0, 0, 80, 80, 0, 0, time - gameData.screenAnimStart, 0.005);
     drawScreenAnim(renderer, time);
     renderer.drawText(30, 106, "You have to");
@@ -162,25 +208,6 @@ export function gameTick(time, renderer, input) {
     }
     return;
   }
-
-
-  // Handle Multiplayer
-  gameData.client.pollIncomingPackets((packet) => {
-    const packetId = packet.readNumber();
-
-  
-    switch (packetId) {
-      case 1: { // Join Game
-        // Disregard gameId (should do this on server but code jam)
-        packet.readString();
-
-      }
-
-        break;
-      default:
-        break;
-    }
-  });
 
   // Handle Input
   if (input.keys.down) {
@@ -245,6 +272,22 @@ export function gameTick(time, renderer, input) {
     }
   }
 
+  
+  // Broadcast data
+  if (!gameData.isOffline) {
+    if (gameData.state === GameState.Map && gameData.inLocation) {
+      gameData.inLocation = false;
+      gameData.client.sendPacket(new Packet().writeNumber(4).writeNumber(gameData.id));
+      console.log("Leaving");
+    } else if (gameData.state === GameState.Location && gameData.inLocation === false && gameData.currentLocation !== null) {
+      gameData.inLocation = true;
+      gameData.client.sendPacket(new Packet().writeNumber(3).writeNumber(gameData.id).writeNumber(LocationToId[gameData.currentLocation]));
+      console.log("Enter");
+    }
+  }
+
+
+  // Weather
   if (gameData.changeRequest) {
     gameData.changeRequest = false;
     if (gameData.state === GameState.Map) {

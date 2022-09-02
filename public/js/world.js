@@ -75,3 +75,22 @@ export const worldGraph = {
   [Location.CityMd]: [Location.CityMd, Location.CrossRoad],
   [Location.Trees]: [Location.Trees, Location.CrossRoad],
 }
+
+const locations = [
+  Location.Start,
+  Location.Dummies,
+  Location.TutPort,
+  Location.CityLg,
+  Location.CrossRoad,
+  Location.Statue,
+  Location.CityMd,
+  Location.Trees,
+]
+
+export let LocationToId = {};
+export let IdToLocation = {};
+
+locations.forEach((location, i) => {
+  LocationToId[location] = i;
+  IdToLocation[i] = location;
+});
