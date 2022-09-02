@@ -9,6 +9,7 @@ export default class Client {
 
   // Connects to the websocket server
   start(url) {
+    if (this.socket && this.socket.readyState !== this.socket.CLOSED) return;
     this.incomingMessages = [];
     this.socket = new WebSocket(url);
     this.socket.binaryType = "arraybuffer";

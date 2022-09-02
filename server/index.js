@@ -32,9 +32,10 @@ uWS.App().ws("/*", {
   },
   message: (ws, message, isBinary) => {
     /* Ok is false if backpressure was built up, wait for drain */
-    const view = new Int32Array(message);
+    const view = new Uint8Array(message);
     const packetType = view[0];
-    console.log(view[0])
+    console.log(view)
+    return;
     switch (packetType) {
       case 0: { // Host Game
         if (isHostingGame(ws)) return;

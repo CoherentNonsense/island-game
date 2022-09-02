@@ -32,6 +32,8 @@ export default class Packet {
 
     view[this._length / 4] = number;
     this._length += 4;
+
+    return this;
   }
 
   writeString(string) {
@@ -45,6 +47,8 @@ export default class Packet {
       view[this._length] = string.charCodeAt(i);
       this._length += 1;
     }
+
+    return this;
   }
 
   readNumber() {

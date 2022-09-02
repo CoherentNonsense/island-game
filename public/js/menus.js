@@ -1,14 +1,17 @@
 /**
- * The main content of the game excluding combat
+ * The main content of the game
  */
 
 import { GameState } from "./game.js";
 import { Location } from "./world.js";
 import { Option, SubMenu, Menu } from "./menu.js";
+import { Enemy } from "./enemy.js";
+import Packet from "./packet.js";
 
 export const titleMenu = new Menu({
   
   title: new SubMenu([
+    new Option("Offline", "username", game => game.isOffline = true),
     new Option("Host", "host"),
     new Option("Join", "join"),
     new Option("Credits", "credits")
@@ -17,16 +20,33 @@ export const titleMenu = new Menu({
   }),
 
   host: new SubMenu([
-    new Option("Create", "username", game => game.isHost = true),
+    new Option("Create", "username", game => {
+      const hostId = game.currentMenu.input.trim();
+      if (hostId.length === 0) {
+        game.currentMenu.pushMessage("Please enter a");
+        game.currentMenu.pushMessage("host ID");
+        return false;
+      }
+      game.isHost = true;
+      game.hostId = hostId;
+    }),
     new Option("Back", "title")
   ], {
-    message: ["Create Host ID", "", "", "Keep private for", "singleplayer"],
-    inputMode: true,
-    inputLine: 1
+    message: ["Create Host ID", "for others to", "join"],
+    inputMode: true
   }),
 
   join: new SubMenu([
-    new Option("Join", "username", game => game.isHost = false),
+    new Option("Join", "username", game => {
+      const hostId = game.currentMenu.input.trim();
+      if (hostId.length === 0) {
+        game.currentMenu.pushMessage("Please enter a");
+        game.currentMenu.pushMessage("host ID");
+        return false;
+      }
+      game.isHost = false;
+      game.hostId = hostId;
+    }),
     new Option("Back", "title"),
   ], {
     message: ["Join Host ID", "Main Server: \"0\""],
@@ -34,8 +54,37 @@ export const titleMenu = new Menu({
   }),
 
   username: new SubMenu([
-    new Option("Enter", "", game => { game.username = game.currentMenu.input; game.currentMenu = startMenu })
-  ], { inputMode: true }),
+    new Option("Enter", "", async game => {
+      const username = game.currentMenu.input.trim();
+      if (username.length === 0) {
+        game.currentMenu.pushMessage("Please enter a");
+        game.currentMenu.pushMessage("username");
+        return;
+      }
+      game.username = username;
+
+      // Connect
+      if (!game.isOffline) {
+        await game.client.start("ws://localhost:8080");
+        let packet = new Packet();
+        if (game.isHost) {
+          packet.writeNumber(0).writeString(game.hostId);
+        } else {
+          packet.writeNumber(1).writeString(game.hostId).writeString(game.username);
+        }
+        game.client.sendPacket(packet);
+      }
+      
+      // Start Intro
+      game.party = [game.username];
+      game.state = GameState.Intro;
+      game.screenAnimStart = game.time;
+    }),
+    new Option("Back", "title")
+  ], {
+    message: ["Enter username"],
+    inputMode: true
+  }),
 
   credits: new SubMenu([
     new Option("Back", "title"),
@@ -46,39 +95,46 @@ export const titleMenu = new Menu({
 }, { anim: "title", disableTalk: true } );
 
 
+// Combat
+// ------
+// A unique menu is built for each encounter
 export const combatMenuBuilder = (game, flavourText) => {
-  const combatData = { gold: 5 };
-
   const itemOptions = [];
 
   game.items.forEach(item => {
-    itemOptions.push(new Option(item.name, "combat", () => {
-      game.enemy.health -= item.damage;
-      game.combatMenu.talk(`You did ${item.damage} dmg`); 
-
-      if (game.enemy.health <= 0) {
-        return "win";
-      }
+    itemOptions.push(new Option(item.name, "wait", () => {
+      game.attackSelection.push({
+        ...item,
+        username: game.username,
+        type: "attack",
+      });
     }));
   });
+
+  itemOptions.push(new Option("Back", "combat"));
   
   const menu = new Menu({
     
     combat: new SubMenu([
-      new Option("Item", "item")
+      new Option("Attack", "attack")
     ]),
 
-    item: new SubMenu(itemOptions, { dontClearMessages: true }),
+    attack: new SubMenu(itemOptions, { dontClearMessages: true }),
+
+    wait: new SubMenu([], { message: ["Waiting..."] }),
     
     win: new SubMenu([
       new Option("Cont.", "", game => game.state = GameState.Location)
     ], {
-      message: [`You gained ${combatData.gold}g`]
+      message: ["", "You Win!", `You gained ${game.enemy.gold}g`]
     })
 
-  }, { talkingMode: true });
+  }, {
+    img: game.enemy.name.replace(" ", "_"),
+    talkingMode: true
+  });
 
-  menu.talk(flavourText);
+  flavourText.forEach(text => {menu.talk(text)});
 
   return menu;
 };
@@ -86,6 +142,7 @@ export const combatMenuBuilder = (game, flavourText) => {
 
 // Location Menus
 // --------------
+// Start
 export const startMenu = new Menu({
   
   start: new SubMenu([
@@ -101,29 +158,40 @@ export const startMenu = new Menu({
     message: ["temporary words"]
   })
 
-}, { img: "start" });
+});
 
+// Dummies
 export const dummiesMenu = new Menu({
   
   dummies: new SubMenu([
-    new Option("Fight", "dummies"),
+    new Option("Fight", "", game => game.enterCombat(Enemy.Dummy)),
     new Option("Leave", "", game => game.state = GameState.Map),
   ], {
     message: ["A pair of", "fighting dummies", "are loosely held", "in the sand"]
   }),
 
-}, { img: "dummies" });
+});
 
+// TutPort
 export const tutPortMenu = new Menu({
   
   tutPort: new SubMenu([
-    new Option("Leave", "", game => game.state = GameState.Map),
+    new Option("Boat", "boat"),
+    new Option("Leave", "", game => game.state = GameState.Map)
   ], {
-    message: ["A port with some", "boats docked.", "How convenient"]
+    message: ["A port with some", "boats docked.", "How convenient", "You can see a", "city across the", "water"]
   }),
 
-}, { img: "dummies" });
+  boat: new SubMenu([
+    new Option("Leave", "", game => { game.currentMenu = cityLgMenu; game.currentLocation = Location.CityLg; }),
+    new Option("Stay", "tutPort")
+  ], {
+    message: ["Are you sure?", "You wont be able", "to return here"]
+  })
 
+});
+
+// CityLg
 export const cityLgMenu = new Menu({
   
   cityLg: new SubMenu([
@@ -145,17 +213,31 @@ export const cityLgMenu = new Menu({
     message: ["A shiny red", "apple.", "Restores 3 health"]
   })
 
-}, { img: "dummies" });
+});
 
+
+// Crossroad
 export const crossRoadMenu = new Menu({
   
-  tutPort: new SubMenu([
+  crossroads: new SubMenu([
     new Option("Leave", "", game => game.state = GameState.Map),
   ], {
     message: ["A fork in the", "road"]
   }),
 
-}, { img: "dummies" });
+});
+
+
+// Statue
+export const statueMenu = new Menu({
+  
+  statue: new SubMenu([
+    new Option("Leave", "", game => game.state = GameState.Map),
+  ], {
+    message: ["a statue"]
+  }),
+
+});
 
 
 export const locationToMenu = {
@@ -165,6 +247,6 @@ export const locationToMenu = {
   [Location.CityLg]: cityLgMenu,
   [Location.CrossRoad]: crossRoadMenu,
   [Location.Trees]: crossRoadMenu,
-  [Location.Statue]: crossRoadMenu,
+  [Location.Statue]: statueMenu,
   [Location.CityMd]: crossRoadMenu,
 };

@@ -14,9 +14,11 @@ Writing this down here so I can reference it.
 |packet id|description|type|
 |---------|-----------|----|
 |__client messages__|
-|0|host a game|n/a|
-|1|join a game|[gameId: number]|
+|000|host a game|[]|
+|001|join a game|[gameId: string, username: string]|
+|002|quit|[]|
+|__host messages__|
+|100|joined game|[initialgamestate...]
 |__server messages__|
-|100|hosted game|[gameId: number]|
-|101|joined game|[initialgamestate...]
-|102|game ended|n/a|
+|200|game not responding|[]|
+|200|hosted game|[gameId: number]|

@@ -66,12 +66,12 @@ export function enterLocation(username, location) {
 
 // A directed graph between locations
 export const worldGraph = {
-  [Location.Start]: [Location.Dummies, Location.TutPort],
-  [Location.Dummies]: [Location.Start, Location.TutPort],
-  [Location.TutPort]: [Location.Dummies, Location.Start, Location.CityLg],
-  [Location.CityLg]: [Location.TutPort, Location.CrossRoad],
-  [Location.CrossRoad]: [Location.CityLg, Location.Statue, Location.CityMd],
-  [Location.Statue]: [Location.CrossRoad],
-  [Location.CityMd]: [Location.CrossRoad],
-  [Location.Trees]: [Location.CrossRoad],
+  [Location.Start]: [Location.Start, Location.Dummies, Location.TutPort],
+  [Location.Dummies]: [Location.Dummies, Location.Start, Location.TutPort],
+  [Location.TutPort]: [Location.TutPort, Location.Dummies, Location.Start],
+  [Location.CityLg]: [Location.CityLg, Location.CrossRoad],
+  [Location.CrossRoad]: [Location.CrossRoad, Location.CityLg, Location.Statue, Location.CityMd],
+  [Location.Statue]: [Location.Status, Location.CrossRoad],
+  [Location.CityMd]: [Location.CityMd, Location.CrossRoad],
+  [Location.Trees]: [Location.Trees, Location.CrossRoad],
 }
