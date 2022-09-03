@@ -5,10 +5,12 @@ let games = {};
 let nextId = 0;
 let freeIds = [];
 
-function broadcast(ws, gameId, message, isBinary = true) {
-  for (let i = 0; i < games[gameId].length; ++i) {
-    if (ws !== games[gameId][i]) {
-      games[gameId][i].send(message, isBinary);
+function broadcast(ws, message, isBinary = true) {
+  if (!ws.gameId) return;
+
+  for (let i = 0; i < games[ws.gameId].length; ++i) {
+    if (ws !== games[ws.gameId][i]) {
+      games[ws.gameId][i].send(message, isBinary);
     }
   }
 }
@@ -33,7 +35,7 @@ function leave(ws) {
     const packet = new ArrayBuffer(4);
     const view = new Int32Array(packet);
     view[0] = 200;
-    broadcast(ws, ws.gameId, packet);
+    broadcast(ws, packet);
     const gameId = ws.gameId;
     games[gameId].forEach(socket => delete socket.gameId);
     delete games[gameId];
@@ -42,7 +44,7 @@ function leave(ws) {
     const view = new Int32Array(packet);
     view[0] = 202;
     view[1] = ws.id;
-    broadcast(ws, ws.gameId, packet);
+    broadcast(ws, packet);
     games[ws.gameId] = games[ws.gameId].filter(socket => socket !== ws);
     delete ws.gameId;
   }
@@ -82,6 +84,16 @@ uWS.App().ws("/*", {
         if (ws.gameId !== undefined) return;
 
         const gameId = getString(message, 4);
+        
+        // Check if gameId already exists
+        if (games[gameId] !== undefined) {
+          const packet = new ArrayBuffer(4);
+          const view = new Int32Array(packet);
+          view[0] = 204;
+          ws.send(packet, isBinary);
+          return;
+        }
+
         games[gameId] = [ws];
         ws.gameId = gameId;
         break;
@@ -112,7 +124,7 @@ uWS.App().ws("/*", {
         break;
 
       default:
-        broadcast(ws, ws.gameId, message, isBinary);
+        broadcast(ws, message, isBinary);
         break;
     }
 

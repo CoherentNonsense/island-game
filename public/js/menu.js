@@ -1,3 +1,5 @@
+import { GameState } from "./game.js";
+import Packet from "./packet.js";
 import { LocationData } from "./world.js";
 
 export class Option {
@@ -28,22 +30,24 @@ export class Menu {
     this.inputMode = false;
     this.inputLine = 0;
     this.input = "";
+    this.notification = false;
     this.talking = [];
     this.defaultImg = config.img || this.current.toLowerCase();
     this.defaultAnim = config.anim;
     this.defaultAnimSpeed = config.animSpeed || 0.003;
     this.talkingMode = config.talkingMode || false;
     this.location = config.location;
+    this.freeRoam = config.freeRoam === undefined ? true : config.freeRoam;
+
+    this.currentCommand = "";
 
     if (!config.disableTalk) {
       const option = new Option("Talk", "talk", game => {
         if (game.talkTutorial) {
           game.talkTutorial = false;
-          this.talk("You can talk with");
-          this.talk("people nearby");
-          this.talk("or type /help");
-          this.talk("for commands");
+          this.talk("/help for info");
         }
+        this.notification = false;
       });
       if (this.current === "combat") {
         this.submenus[this.current].options.push(option);
@@ -51,9 +55,96 @@ export class Menu {
         this.submenus[this.current].options.splice(this.submenus[this.current].options.length - 1, 0, option);
       }
       this.submenus["talk"] = new SubMenu([
-        new Option("Speak", "", () => {
+        new Option("Speak", "", game => {
           const message = this.input.trimEnd();
-          if (message.length > 0) {
+          if (message.startsWith("/")) {
+            const commands = message.split(" ");
+            this.currentCommand = commands[0];
+            this.talk("");
+            // Handle Commands
+            switch (commands[0]) {
+              case "/help":
+                if (!commands[1]) {
+                  this.talk(String.fromCharCode(218) + "Commands" + String.fromCharCode(191))
+                  this.talk("/what (is this?)");
+                  this.talk("/help party");
+                } else if (commands[1] === "party") {
+                  this.talk(String.fromCharCode(218) + "Make a party" + String.fromCharCode(191));
+                  this.talk("/make [password]");
+                  this.talk(String.fromCharCode(218) + "Join a party" + String.fromCharCode(191));
+                  this.talk("/join [password]");
+                  this.talk("/next (next page)");
+                }
+                break;
+
+              case "/what":
+                this.talk("This screen lets");
+                this.talk("you to talk to");
+                this.talk("people nearby or");
+                this.talk("enter commands");
+                break;
+                              
+              case "/next":
+                this.talk(String.fromCharCode(218) + "Leave party" + String.fromCharCode(191));
+                this.talk("/leave");
+                this.talk(String.fromCharCode(218) + "List members" + String.fromCharCode(191));
+                this.talk("/list");
+                break;
+
+              case "/make": {
+                if (game.partyPassword.length > 0) { this.talk("/leave current"); this.talk("party first"); break; }
+                if (!commands[1]) { this.talk("Enter a password"); break; }
+                game.partyPassword = commands[1];
+                game.isPartyLeader = true;
+                game.partyLeader = game.id;
+                this.talk("Party Password:");
+                this.talk(game.partyPassword);
+                const packet = new Packet().writeNumber(7).writeString(game.partyPassword);
+                game.client.sendPacket(packet);
+                break;
+              }
+
+              case "/join": {
+                if (game.partyPassword.length > 0) { this.talk("/leave current"); this.talk("party first"); break; }
+                if (!commands[1]) { this.talk("Enter a password"); break; }
+                const packet = new Packet().writeNumber(6).writeString(commands[1]).writeNumber(game.id);
+                game.client.sendPacket(packet);
+                game.waitingPartyPassword = commands[1];
+                this.talk("Joining...");
+                break;
+              }
+              
+              case "/leave": {
+                if (game.partyPassword.length === 0) { this.talk("You are not in a"); this.talk("party"); break; }
+                if (game.isPartyLeader) {
+                  game.isPartyLeader = false;
+                  const assignLeaderPacket = new Packet().writeNumber(10).writeNumber(game.party[1]);
+                  game.client.sendPacket(assignLeaderPacket);
+                }
+                const packet = new Packet().writeNumber(9).writeNumber(game.id);
+                game.client.sendPacket(packet);
+                game.partyPassword = "";
+                game.waitingPartyPassword = "";
+                game.party = [game.id];
+                this.talk("Left party");
+                break;
+              }
+
+              case "/list":
+                this.talk(String.fromCharCode(218) + "Members (IDS)" + String.fromCharCode(191));
+                const membersToList = Math.min(4, game.party.length);
+                for (let i = 0; i < membersToList; ++i) {
+                  this.talk("" + game.party[i]);
+                }
+                break;
+              
+              default:
+                this.talk("Invalid command");
+            }
+          } else if (message.length > 0) {
+            if (!game.isOffline) {
+              game.client.sendPacket(new Packet().writeNumber(5).writeNumber(game.id).writeString(message));
+            }
             this.talk(message);
           }
           this.input = "";
@@ -93,6 +184,7 @@ export class Menu {
   }
 
   talk(message) {
+    if (this.current !== "talk" && this.root !== "combat") this.notification = true;
     this.talking.push(message);
     if (this.talking.length > 5) {
       this.talking.splice(0, 1);
@@ -107,11 +199,22 @@ export class Menu {
   }
 
   select(gameData, submenuId = undefined) {
+
     
     if (!submenuId) {
       const option = this.currentOptions()[this.index];
       if (option.onclick(gameData) === false) return;
       if (option.to === "") return;
+      if (option.to === "leave") {
+        if (gameData.partyPassword.length > 0 && !gameData.isPartyLeader) {
+          // Can't leave if not party leader
+          this.pushMessage("Wait for party");
+          this.pushMessage("leader");
+        } else {
+          gameData.state = GameState.Map;
+        }
+        return;
+      }
       this.current = option.to;
     } else {
       this.current = submenuId;
@@ -143,7 +246,7 @@ export class Menu {
     }
 
     if (this.location) {
-      if (LocationData[this.location].players.length < 1 && !this.submenus[this.current].img) {
+      if (LocationData[this.location].players.length > 1 && !this.submenus[this.current].img) {
         renderer.draw("other", 0, 0, 80, 80, 0, 0);
       }
     }

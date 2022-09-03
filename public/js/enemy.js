@@ -1,7 +1,6 @@
 export const Enemy = Object.freeze({
   Dummy: Symbol("symbol"), 
   SandFlea: Symbol("sandflea"),
-  Grass: Symbol("grass"),
 });
 
 export const EnemyData = {
@@ -19,13 +18,20 @@ export const EnemyData = {
     name: "sandflea",
     health: 8,
     speed: 50,
-    damage: 1,
+    damage: 2,
     gold: 2,
-  },
-  [Enemy.Grass]: {
-    name: "grass",
-    health: 15,
-    speed: 10,
-    damage: 4,
   }
 }
+
+export const enemies = [
+  Enemy.Dummy,
+  Enemy.SandFlea,
+];
+
+export let enemyToId = {};
+export let idToEnemy = {};
+
+enemies.forEach((enemy, id) => {
+  enemyToId[enemy] = id;
+  idToEnemy[id] = enemy;
+});

@@ -1,4 +1,3 @@
-import Client from "./client.js";
 import Renderer from "./renderer.js";
 import { gameTick } from "./game.js";
 import Input from "./input.js";

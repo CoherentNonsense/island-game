@@ -73,10 +73,11 @@ export const titleMenu = new Menu({
           packet.writeNumber(1).writeString(game.hostId);
         }
         game.client.sendPacket(packet);
+      } else {
+        game.party = [0];
       }
       
       // Start Intro
-      game.party = [game.username];
       game.state = GameState.Intro;
       game.currentLocation = Location.Start;
       game.screenAnimStart = game.time;
@@ -148,7 +149,7 @@ export const startMenu = new Menu({
   
   start: new SubMenu([
     new Option("Look", "look"),
-    new Option("Leave", "", game => game.state = GameState.Map),
+    new Option("Leave", "leave"),
   ], {
     message: ["You stand at the", "tip of an island"]
   }),
@@ -166,7 +167,7 @@ export const dummiesMenu = new Menu({
   
   dummies: new SubMenu([
     new Option("Fight", "", game => game.enterCombat(Enemy.Dummy)),
-    new Option("Leave", "", game => game.state = GameState.Map),
+    new Option("Leave", "leave"),
   ], {
     message: ["A pair of", "fighting dummies", "are loosely held", "in the sand"]
   }),
@@ -178,26 +179,26 @@ export const tutPortMenu = new Menu({
   
   tutPort: new SubMenu([
     new Option("Boat", "boat"),
-    new Option("Leave", "", game => game.state = GameState.Map)
+    new Option("Leave", "leave"),
   ], {
     message: ["A port with some", "boats docked.", "How convenient", "You can see a", "city across the", "water"]
   }),
 
   boat: new SubMenu([
-    new Option("Leave", "", game => { game.currentMenu = cityLgMenu; game.currentLocation = Location.CityLg; }),
+    new Option("Go", "", game => { game.currentMenu = cityLgMenu; game.currentLocation = Location.CityLg; }),
     new Option("Stay", "tutPort")
   ], {
     message: ["Are you sure?", "You wont be able", "to return here"]
   })
 
-}, { location: Location.TutPort });
+}, { location: Location.TutPort, freeRoam: false });
 
 // CityLg
 export const cityLgMenu = new Menu({
   
   cityLg: new SubMenu([
     new Option("Items", "items"),
-    new Option("Leave", "", game => game.state = GameState.Map),
+    new Option("Leave", "leave"),
   ], {
     message: ["A bussling city", "with many stores"]
   }),
@@ -221,7 +222,7 @@ export const cityLgMenu = new Menu({
 export const crossRoadMenu = new Menu({
   
   crossroads: new SubMenu([
-    new Option("Leave", "", game => game.state = GameState.Map),
+    new Option("Leave", "leave"),
   ], {
     message: ["A fork in the", "road"]
   }),
@@ -233,7 +234,7 @@ export const crossRoadMenu = new Menu({
 export const statueMenu = new Menu({
   
   statue: new SubMenu([
-    new Option("Leave", "", game => game.state = GameState.Map),
+    new Option("Leave", "leave"),
   ], {
     message: ["a statue"]
   }),

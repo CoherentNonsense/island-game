@@ -1,8 +1,8 @@
 import Client from "./client.js";
-import { Enemy, EnemyData } from "./enemy.js";
+import { Enemy, EnemyData, enemyToId, idToEnemy } from "./enemy.js";
 import { combatMenuBuilder, locationToMenu, startMenu, titleMenu } from "./menus.js";
 import Packet from "./packet.js";
-import { LocationData, Location, worldGraph, LocationToId } from "./world.js";
+import { LocationData, Location, worldGraph, LocationToId, IdToLocation, enterLocation, leaveLocation, locations, whereIs } from "./world.js";
 
 export const GameState = Object.freeze({
   Intro:      Symbol("intro"),
@@ -27,7 +27,13 @@ const gameData = {
   maxHealth: 15,
   health: 15,
   gold: 0,
+
   party: [],
+  isPartyLeader: false,
+  partyLeader: -1,
+  partyPassword: "",
+  // (Bad design) used to store password until we get accepted to party
+  waitingPartyPassword: "",
 
   talkTutorial: true,
   mapTutorial: true,
@@ -67,8 +73,11 @@ function drawMenu(renderer, time, menu) {
   renderer.fillRect("#080808", 0, 80, 160, 80);
 
   menu.currentOptions().forEach((option, idx) => {
-    const text = idx === menu.index ? ">" + option.name : " " + option.name;
-    renderer.drawText(83, 2 + (13 * idx), text);
+    const text = option.name
+    let prefix = (text === "Talk" && menu.notification) ? "!" : " ";
+    prefix = (text === "Leave" && gameData.partyPassword.length > 0 && !gameData.isPartyLeader) ? String.fromCharCode(42) : prefix;
+    prefix = (idx === menu.index) ? ">" : prefix;
+    renderer.drawText(83, 2 + (13 * idx), prefix + text);
   });
 
   menu.currentMessages().forEach((message, idx) => {
@@ -94,6 +103,10 @@ function aOrAn(word) {
 }
 
 function enterCombat(enemy, time) {
+  if (gameData.isPartyLeader) {
+    const packet = new Packet().writeNumber(13).writeNumber(gameData.id).writeNumber(enemyToId[enemy]);
+    gameData.client.sendPacket(packet);
+  }
   gameData.enemy = {...EnemyData[enemy]};
   gameData.enemy.maxHealth = gameData.enemy.health;
   const flavour = gameData.state === GameState.Map ? [aOrAn(gameData.enemy.name), "attacks on your", "way!"] : ["You attack the", gameData.enemy.name];
@@ -151,17 +164,183 @@ export function gameTick(time, renderer, input) {
   // Handle Multiplayer
   gameData.client.pollIncomingPackets((packet) => {
     const packetId = packet.readNumber();
-
+    console.log(packetId);
     switch (packetId) {
       case 1: { // Join Game
-        // Disregard gameId (should do this on server but code jam)
-        packet.readString();
+        if (gameData.isHost) {
+          const returnPacket = new Packet().writeNumber(100);
+          locations.forEach((location, id) => {
+            LocationData[location].players.forEach((player) => {
+              returnPacket.writeNumber(id).writeNumber(player);
+            });
+          });
+          returnPacket.writeNumber(-1);
+          gameData.client.sendPacket(returnPacket);
+        }
+        break;
+      }
+
+      // User entered location
+      case 3: {
+        const userId = packet.readNumber();
+        const locationId = packet.readNumber();
+        const location = IdToLocation[locationId];
+        if (userId === gameData.partyLeader) {
+          gameData.state = GameState.Location;
+          gameData.currentLocation = location;
+          gameData.currentMenu = locationToMenu[location];
+        }
+        enterLocation(userId, location);
+        break;
+      }
+
+      // User left location
+      case 4: {
+        const userId = packet.readNumber();
+        if (userId === gameData.partyLeader) {
+          gameData.state = GameState.Map;
+        }
+        leaveLocation(userId);
+        break;
+      }
+
+      // Talk
+      case 5: {
+        const userId = packet.readNumber();
+        if (whereIs(userId) === gameData.currentLocation) {
+          const text = packet.readString();
+          gameData.currentMenu.talk(text);
+        }
+        break;
+      }
+
+      // Join party
+      case 6: {
+        const partyPassword = packet.readString();
+        
+        if (gameData.partyPassword === partyPassword) {
+          const userId = packet.readNumber();
+          if (whereIs(userId) !== gameData.currentLocation) break;
+          if (userId > -1 && !gameData.party.includes(userId)) {
+            if (gameData.isPartyLeader) {
+              const returnPacket = new Packet().writeNumber(8).writeNumber(userId);
+              gameData.party.forEach(member => returnPacket.writeNumber(member));
+              returnPacket.writeNumber(-1);
+              gameData.client.sendPacket(returnPacket);
+            }
+            gameData.party.push(userId);
+          }
+        }
+
+        break;
+      }
+
+      // Make party
+      case 7: {
+        const partyPassword = packet.readString();
+
+        if (gameData.partyPassword === partyPassword) {
+          const partyExistsPacket = new Packet().writeNumber(11).writeString(partyPassword);
+          gameData.client.sendPacket(partyExistsPacket);
+        }
+        break;
+      }
+      
+      // Join party accepted
+      case 8: {
+        const userId = packet.readNumber();
+
+        if (gameData.id === userId) {
+          gameData.partyPassword = gameData.waitingPartyPassword;
+          const leader = packet.readNumber();
+          gameData.partyLeader = leader;
+          gameData.party.push(leader);
+          while (true) {
+            const memberId = packet.readNumber();
+            if (memberId === -1) break;
+            gameData.party.push(memberId);
+          }
+          gameData.currentMenu.talk("Joined Party");
+        }
+        break;
+      }
+      
+      // Leave party
+      case 9: {
+        const userId = packet.readNumber();
+        gameData.party = gameData.party.filter(member => userId !== member);
+        break;
+      }
+      
+
+      // Assign party leader (when party leader leaves)
+      case 10: {
+        const partyPassword = packet.readString();
+        if (partyPassword === gameData.partyPassword) {
+          const userId = packet.readNumber();
+          gameData.partyLeader = userId;
+          if (userId === gameData.id) {
+            gameData.isHost = true;
+          }
+        }
+        break;
+      }
+
+      // Party password in use
+      case 11: {
+        const partyPassword = packet.readString();
+        if (partyPassword === gameData.partyPassword) {
+          gameData.currentMenu.talk("Password in use");
+          gameData.currentMenu.talk("Try /join or make");
+          gameData.currentMenu.talk("another");
+          gameData.partyPassword = "";
+          gameData.isPartyLeader = false;
+          gameData.partyLeader = -1;
+        }
+        break;
+      }
+
+      // Party leader location selected
+      case 12: {
+        const leaderId = packet.readNumber();
+        if (leaderId === gameData.partyLeader) {
+          const selection = packet.readNumber();
+          if (gameData.currentMenu.current === "talk") {
+            gameData.currentMenu.select(gameData, gameData.currentMenu.root);
+          }
+          gameData.currentMenu.index = selection;
+          gameData.currentMenu.select(gameData);
+        }
+        break;
+      }
+
+      // party enter combat
+      case 13: {
+        const leaderId = packet.readNumber();
+        if (leaderId === gameData.partyLeader && !gameData.isPartyLeader) {
+          const enemyId = packet.readNumber();
+          const enemy = idToEnemy[enemyId];
+          enterCombat(enemy, time);
+        }
+        break;
+      }
+
+
+      // Receive game data
+      case 100: {
+        while (true) {
+          const locationId = packet.readNumber();
+          if (locationId === -1) break;
+          const userId = packet.readNumber();
+          enterLocation(userId, IdToLocation[locationId]);
+        }
         break;
       }
 
       // Game Ended
       case 200:
-        console.log("Game ended");
+        gameData.currentLocation = null;
+        gameData.currentMenu = titleMenu;
         break;
 
       // Host Id doesn't exist
@@ -174,12 +353,23 @@ export function gameTick(time, renderer, input) {
       // Player left
       case 202:
         console.log("player left");
-        console.log(packet.readNumber());
+        const userId = packet.readNumber();
+        gameData.party = gameData.party.filter(member => userId !== member);
+        leaveLocation(userId);
         break;
 
       // Receive userId
       case 203:
         gameData.id = packet.readNumber();
+        gameData.party.unshift(gameData.id);
+        console.log("Received User ID: " + gameData.id);
+        break;
+    
+      // Host Id exists
+      case 204:
+        gameData.state = GameState.Location;
+        gameData.currentMenu.select(gameData, "title");
+        gameData.currentMenu.messages = ["That host ID", "already exists"];
         console.log("Received User ID: " + gameData.id);
         break;
 
@@ -200,7 +390,7 @@ export function gameTick(time, renderer, input) {
     renderer.drawAnim("intro", 0, 0, 80, 80, 0, 0, time - gameData.screenAnimStart, 0.005);
     drawScreenAnim(renderer, time);
     renderer.drawText(30, 106, "You have to");
-    renderer.drawText(48, 119, "stop it");  
+    renderer.drawText(39, 119, "stop  him");  
     if (time - gameData.screenAnimStart > (45 / 0.005) + 2400) {
       gameData.state = GameState.Location;
       gameData.currentMenu = startMenu;
@@ -234,9 +424,8 @@ export function gameTick(time, renderer, input) {
   }
 
   if (input.keys.enter) {
-    if (gameData.state === GameState.Map) {
+    if (gameData.state === GameState.Map && (gameData.partyPassword.length === 0 || gameData.isPartyLeader)) {
       const moveableLocations = worldGraph[gameData.currentLocation];
-      gameData.currentMenu.reset();
       if (gameData.currentLocation === moveableLocations[gameData.locationSelected]) {
         gameData.locationSelected = 0;
         gameData.state = GameState.Location;
@@ -256,7 +445,7 @@ export function gameTick(time, renderer, input) {
               enterCombat(Enemy.SandFlea, time);
               break;
             case Location.Statue:
-              enterCombat(Enemy.Grass, time);
+              enterCombat(Enemy.SandFlea, time);
               break;
             default:
               enterCombat(Enemy.SandFlea, time);
@@ -268,7 +457,14 @@ export function gameTick(time, renderer, input) {
     } else if (gameData.state === GameState.Combat) {
       gameData.combatMenu.select(gameData);
     } else {
-      gameData.currentMenu.select(gameData);
+      if (gameData.isOffline || gameData.currentMenu.freeRoam || gameData.currentMenu.current === "talk" || gameData.currentMenu.currentOptions()[gameData.currentMenu.index].to === "talk") {
+        gameData.currentMenu.select(gameData);
+      } else if (gameData.isPartyLeader) {
+        const selection = gameData.currentMenu.index;
+        const packet = new Packet().writeNumber(12).writeNumber(gameData.id).writeNumber(selection);
+        gameData.client.sendPacket(packet);
+        gameData.currentMenu.select(gameData);
+      }
     }
   }
 
@@ -278,11 +474,12 @@ export function gameTick(time, renderer, input) {
     if (gameData.state === GameState.Map && gameData.inLocation) {
       gameData.inLocation = false;
       gameData.client.sendPacket(new Packet().writeNumber(4).writeNumber(gameData.id));
-      console.log("Leaving");
+      leaveLocation(gameData.id);
     } else if (gameData.state === GameState.Location && gameData.inLocation === false && gameData.currentLocation !== null) {
       gameData.inLocation = true;
       gameData.client.sendPacket(new Packet().writeNumber(3).writeNumber(gameData.id).writeNumber(LocationToId[gameData.currentLocation]));
-      console.log("Enter");
+      enterLocation(gameData.id, gameData.currentLocation);
+      gameData.currentMenu.reset();
     }
   }
 
@@ -321,7 +518,7 @@ export function gameTick(time, renderer, input) {
       gameData.attackSelection.sort((a, b) => b.speed - a.speed);
 
       gameData.attackSelection.forEach((selection) => {
-        if (gameData.enemy.health <= 0) return;
+        if (gameData.enemy.health <= 0 || gameData.health <= 0) return;
 
         switch (selection.type) {
           case "enemy": {
@@ -332,8 +529,12 @@ export function gameTick(time, renderer, input) {
               if (attack.flavour !== undefined) {
                 attack.flavour.forEach(text => gameData.combatMenu.talk(text));
               } else {
-                gameData.combatMenu.talk(`You took ${attack.damage} dmg`);
+                gameData.combatMenu.talk(`You took ${damage} dmg`);
               }
+            } else {
+              const damage = (selection.damage === 0) ? 0 : selection.damage + (Math.floor(Math.random() * 3) - 1);
+              gameData.health -= damage;
+              gameData.combatMenu.talk(`You took ${damage} dmg`);
             }
             break;
           }
@@ -370,6 +571,11 @@ export function gameTick(time, renderer, input) {
       gameData.inCombat = false;
       gameData.gold += gameData.enemy.gold;
       gameData.combatMenu.select(gameData, "win");
+    } else if (gameData.health <= 0) {
+      gameData.health = 0;
+      gameData.inCombat = false;
+      gameData.gold = 0;
+      gameData.combatMenu.select(gameData, "lose");
     }
   }
 

@@ -54,13 +54,27 @@ export const LocationData = {
   },
 };
 
-export function enterLocation(username, location) {
-  if (!Location[location].players.find(currentUsername => currentUsername === username)) {
-    LocationData[location].players.push(username);
-    return true;
+export function enterLocation(userId, location) {
+  if (!LocationData[location].players.includes(userId)) {
+    LocationData[location].players.push(userId);
   }
+}
 
-  return false;
+export function leaveLocation(userId) {
+  locations.forEach((location) => {
+    LocationData[location].players = LocationData[location].players.filter(player => userId !== player);
+  });
+}
+
+export function whereIs(userId) {
+  let here = null;
+  locations.forEach((location, id) => {
+    if (LocationData[location].players.includes(userId)) {
+      here = IdToLocation[id];
+    }
+  });
+
+  return here;
 }
 
 
@@ -76,7 +90,7 @@ export const worldGraph = {
   [Location.Trees]: [Location.Trees, Location.CrossRoad],
 }
 
-const locations = [
+export const locations = [
   Location.Start,
   Location.Dummies,
   Location.TutPort,
