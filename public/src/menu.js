@@ -1,5 +1,6 @@
 import { GameState } from "./game.js";
 import Packet from "./packet.js";
+import { IdToWeapon, WeaponData } from "./weapon.js";
 import { LocationData } from "./world.js";
 
 export class Option {
@@ -41,6 +42,46 @@ export class Menu {
 
     this.currentCommand = "";
 
+    // Add stats option
+    const statOption = new Option("Stats", "stats");
+    this.submenus["stats"] = new SubMenu([
+      new Option("Player", "", game => {
+        this.messages = [`Hp: ${game.health}/${game.maxHealth}`];
+        this.pushMessage(`Gold: ${game.gold}`);
+      }),
+      new Option("Equip", "equip", game => {
+        this.messages = ["Weapons:"];
+        game.items.forEach((weapon) => {
+          this.pushMessage(WeaponData[weapon].name);
+        });
+      }),
+      new Option("Back", this.root)
+    ]);
+    this.submenus["equip"] = new SubMenu([
+      new Option("Use", "use"),
+      new Option("Delete", "delete"),
+      new Option("Back", "stats")
+    ], { dontClearMessages: true });
+    this.submenus["use"] = new SubMenu([
+      new Option("Use 1", "stats", game => game.items[0].use(game)),
+      new Option("Use 2", "stats", game => game.items[1].use(game)),
+      new Option("Use 3", "stats", game => game.items[2].use(game)),
+      new Option("Use 4", "stats", game => game.items[3].use(game)),
+      new Option("Back", "equip"),
+    ], { dontClearMessages: true });
+    this.submenus["delete"] = new SubMenu([
+      new Option("Del 1", "stats", game => game.items.splice(0, 1)),
+      new Option("Del 2", "stats", game => game.items.splice(1, 1)),
+      new Option("Del 3", "stats", game => game.items.splice(2, 1)),
+      new Option("Del 4", "stats", game => game.items.splice(3, 1)),
+      new Option("Back", "equip"),
+    ], { dontClearMessages: true });
+
+    if (this.current !== "combat" && this.current !== "title") {
+      this.submenus[this.current].options.splice(this.submenus[this.current].options.length - 1, 0, statOption);
+    }
+
+    // Add talk option
     if (!config.disableTalk) {
       const option = new Option("Talk", "talk", game => {
         if (game.talkTutorial) {
@@ -68,12 +109,16 @@ export class Menu {
                   this.talk(String.fromCharCode(218) + "Commands" + String.fromCharCode(191))
                   this.talk("/what (is this?)");
                   this.talk("/help party");
+                  this.talk("/help talk");
                 } else if (commands[1] === "party") {
                   this.talk(String.fromCharCode(218) + "Make a party" + String.fromCharCode(191));
                   this.talk("/make [password]");
                   this.talk(String.fromCharCode(218) + "Join a party" + String.fromCharCode(191));
                   this.talk("/join [password]");
                   this.talk("/next (next page)");
+                } else if (commands[1] === "talk") {
+                  this.talk(String.fromCharCode(218) + "Global Chat" + String.fromCharCode(191));
+                  this.talk("unimplemented");
                 }
                 break;
 
@@ -97,6 +142,8 @@ export class Menu {
                 game.partyPassword = commands[1];
                 game.isPartyLeader = true;
                 game.partyLeader = game.id;
+                game.individualMaxHealth = game.maxHealth;
+                game.individualHealth = game.health;
                 this.talk("Party Password:");
                 this.talk(game.partyPassword);
                 const packet = new Packet().writeNumber(7).writeString(game.partyPassword);
@@ -107,7 +154,7 @@ export class Menu {
               case "/join": {
                 if (game.partyPassword.length > 0) { this.talk("/leave current"); this.talk("party first"); break; }
                 if (!commands[1]) { this.talk("Enter a password"); break; }
-                const packet = new Packet().writeNumber(6).writeString(commands[1]).writeNumber(game.id);
+                const packet = new Packet().writeNumber(6).writeString(commands[1]).writeNumber(game.id).writeNumber(game.maxHealth).writeNumber(game.health);
                 game.client.sendPacket(packet);
                 game.waitingPartyPassword = commands[1];
                 this.talk("Joining...");
@@ -116,16 +163,20 @@ export class Menu {
               
               case "/leave": {
                 if (game.partyPassword.length === 0) { this.talk("You are not in a"); this.talk("party"); break; }
-                if (game.isPartyLeader) {
+                if (game.isPartyLeader && game.party.length > 1) {
                   game.isPartyLeader = false;
-                  const assignLeaderPacket = new Packet().writeNumber(10).writeNumber(game.party[1]);
+                  const assignLeaderPacket = new Packet().writeNumber(10).writeNumber(game.id).writeNumber(game.party[1]);
                   game.client.sendPacket(assignLeaderPacket);
                 }
-                const packet = new Packet().writeNumber(9).writeNumber(game.id);
+                const packet = new Packet().writeNumber(9).writeNumber(game.id).writeNumber(game.individualMaxHealth).writeNumber(game.individualHealth);
                 game.client.sendPacket(packet);
                 game.partyPassword = "";
                 game.waitingPartyPassword = "";
                 game.party = [game.id];
+                const healthFrac = game.health / game.maxHealth;
+                const lostHealth = Math.ceil(healthFrac * game.individualMaxHealth);      
+                game.maxHealth = game.individualMaxHealth;
+                game.health = lostHealth;
                 this.talk("Left party");
                 break;
               }

@@ -27,7 +27,7 @@ const gameData = {
   username: "",
   maxHealth: 15,
   health: 15,
-  gold: 0,
+  gold: 100,
 
   party: [],
   isPartyLeader: false,
@@ -36,9 +36,14 @@ const gameData = {
   // (Bad design) used to store password until we get accepted to party
   waitingPartyPassword: "",
   partyEnemySelection: {},
+  // Store your personal health when joining party
+  individualHealth: 0,
+  individualMaxHealth: 0,
+  partyIndividualHealth: {},
 
   talkTutorial: true,
   mapTutorial: true,
+  deathTutorial: true,
 
   weather: "Summer",
   changeRequest: false,  
@@ -48,7 +53,7 @@ const gameData = {
   currentLocation: null,
   locationSelected: 0,
   
-  items: [Weapon.Hands],
+  items: [],
   
   screenAnimStart: 0,
   screenAnimType: "",
@@ -62,11 +67,6 @@ const gameData = {
   // Functions to be used elsewhere (halp this is noodles)
   enterCombat: (enemy) => enterCombat(enemy, 0),
 };
-
-
-setInterval(() => {
-  gameData.changeRequest = true;
-}, 1000 * 60 * 5);
 
 
 // Helper Functions
@@ -223,13 +223,20 @@ export function gameTick(time, renderer, input) {
           const userId = packet.readNumber();
           if (whereIs(userId) !== gameData.currentLocation) break;
           if (userId > -1 && !gameData.party.includes(userId)) {
+            const maxHealth = packet.readNumber();
+            const health = packet.readNumber();
             if (gameData.isPartyLeader) {
-              const returnPacket = new Packet().writeNumber(8).writeNumber(userId);
+              gameData.partyIndividualHealth[userId] = { maxHealth, health };
+              const returnPacket = new Packet().writeNumber(8).writeNumber(userId).writeNumber(gameData.maxHealth).writeNumber(gameData.health);
               gameData.party.forEach(member => returnPacket.writeNumber(member));
               returnPacket.writeNumber(-1);
               gameData.client.sendPacket(returnPacket);
             }
+            gameData.maxHealth += maxHealth;
+            gameData.health += health;
             gameData.party.push(userId);
+            gameData.currentMenu.talk("Member joined");
+            gameData.currentMenu.talk("party");
           }
         }
 
@@ -253,6 +260,12 @@ export function gameTick(time, renderer, input) {
 
         if (gameData.id === userId) {
           gameData.partyPassword = gameData.waitingPartyPassword;
+          const maxHealth = packet.readNumber();
+          const health = packet.readNumber();
+          gameData.individualHealth = gameData.health;
+          gameData.individualMaxHealth = gameData.maxHealth;
+          gameData.maxHealth += maxHealth;
+          gameData.health += health;
           const leader = packet.readNumber();
           gameData.partyLeader = leader;
           gameData.party.push(leader);
@@ -269,20 +282,29 @@ export function gameTick(time, renderer, input) {
       // Leave party
       case 9: {
         const userId = packet.readNumber();
-        gameData.party = gameData.party.filter(member => userId !== member);
+        if (gameData.party.includes(userId)) {
+          const maxHealth = packet.readNumber();
+          const health = packet.readNumber();
+          const healthFrac = gameData.health / gameData.maxHealth;
+          const lostHealth = Math.floor(healthFrac * maxHealth);
+          gameData.maxHealth -= maxHealth;
+          gameData.health -= lostHealth;
+          gameData.party = gameData.party.filter(member => userId !== member);
+          gameData.currentMenu.talk("Member left party")
+        }
         break;
       }
       
 
       // Assign party leader (when party leader leaves)
       case 10: {
-        const partyPassword = packet.readString();
-        if (partyPassword === gameData.partyPassword) {
+        const leaderId = packet.readNumber();
+        if (leaderId === gameData.partyLeader) {
           const userId = packet.readNumber();
           gameData.partyLeader = userId;
-          if (userId === gameData.id) {
-            gameData.isHost = true;
-          }
+          gameData.isPartyLeader = userId === gameData.id;
+          gameData.currentMenu.talk("You are now");
+          gameData.currentMenu.talk("party leader");
         }
         break;
       }
@@ -390,7 +412,25 @@ export function gameTick(time, renderer, input) {
       case 202:
         console.log("player left");
         const userId = packet.readNumber();
-        gameData.party = gameData.party.filter(member => userId !== member);
+        if (gameData.party.includes(userId)) {
+          if (gameData.isPartyLeader) {
+            const maxHealth = gameData.partyIndividualHealth[userId].maxHealth;
+            const health = gameData.partyIndividualHealth[userId].health;
+            const healthFrac = gameData.health / gameData.maxHealth;
+            const lostHealth = Math.floor(healthFrac * maxHealth);
+              gameData.maxHealth -= maxHealth;
+            gameData.health -= lostHealth;
+            gameData.party = gameData.party.filter(member => userId !== member);
+            const packet = new Packet().writeNumber(9).writeNumber(userId).writeNumber(maxHealth).writeNumber(health);
+            gameData.client.sendPacket(packet);
+          } else if (gameData.partyLeader === userId) {
+            gameData.currentMenu.talk("Party disbanded:");
+            gameData.currentMenu.talk("Leader left");
+            gameData.partyLeader = -1;
+            gameData.partyPassword = "";
+            gameData.party = [gameData.id];
+          }
+        }
         leaveLocation(userId);
         break;
 
@@ -399,6 +439,12 @@ export function gameTick(time, renderer, input) {
         gameData.id = packet.readNumber();
         gameData.party.unshift(gameData.id);
         console.log("Received User ID: " + gameData.id);
+
+        if (gameData.isHost) {
+          setInterval(() => {
+            gameData.changeRequest = true;
+          }, 1000 * 60 * 5);
+        }
         break;
     
       // Host Id exists
@@ -406,22 +452,19 @@ export function gameTick(time, renderer, input) {
         gameData.state = GameState.Location;
         gameData.currentMenu.select(gameData, "title");
         gameData.currentMenu.messages = ["That host ID", "already exists"];
-        console.log("Received User ID: " + gameData.id);
-        break;
-
-      // Test
-      case 50:
-        console.log("AYY");
         break;
 
       default:
         break;
     }
+    console.log(gameData.health, gameData.maxHealth, gameData.individualHealth, gameData.individualMaxHealth);
   });
 
   // Intro
   if (gameData.state === GameState.Intro) {
-    gameData.screenAnimType = "intro";
+    gameData.state = GameState.Location;
+    gameData.currentMenu = startMenu;
+  gameData.screenAnimType = "intro";
     renderer.fillRect("#000", 0, 0, 160, 160);
     renderer.drawAnim("intro", 0, 0, 80, 80, 0, 0, time - gameData.screenAnimStart, 0.005);
     drawScreenAnim(renderer, time);
@@ -435,7 +478,7 @@ export function gameTick(time, renderer, input) {
     return;
   }
 
-  // Handle Input
+  // Input
   if (input.keys.down) {
     if (gameData.state === GameState.Map) {
       gameData.locationSelected = (gameData.locationSelected + 1) % worldGraph[gameData.currentLocation].length;
@@ -467,33 +510,52 @@ export function gameTick(time, renderer, input) {
         gameData.state = GameState.Location;
       } else {
         gameData.currentMenu.talking = [];
-        gameData.currentLocation = moveableLocations[gameData.locationSelected]
-        gameData.currentMenu = locationToMenu[gameData.currentLocation];
-        gameData.locationSelected = 0;
-        if (
-          Math.random() < 0.5 &&
-          gameData.currentLocation !== Location.Start &&
-          gameData.currentLocation !== Location.Dummies &&
-          gameData.currentLocation !== Location.TutPort
+        if (moveableLocations[gameData.locationSelected] === Location.Ice && gameData.weather !== "winter") {
+          alert("Cannot move here");
+        } else if (
+          (moveableLocations[gameData.locationSelected] === Location.ForestN &&
+          gameData.currentLocation === Location.ForestS) ||
+            (moveableLocations[gameData.locationSelected] === Location.ForestS &&
+              gameData.currentLocation === Location.ForestN)
         ) {
-          switch (gameData.currentLocation) {
-            case Location.CrossRoad:
-              enterCombat(Enemy.SandFlea, time);
-              break;
-            case Location.Statue:
-              enterCombat(Enemy.SandFlea, time);
-              break;
-            default:
-              enterCombat(Enemy.SandFlea, time);
-          }
+          alert("The river is too strong to pass");
         } else {
-          gameData.state = GameState.Location;
+          gameData.currentLocation = moveableLocations[gameData.locationSelected]
+          if (gameData.currentLocation === Location.CityLg ||
+              gameData.currentLocation === Location.CityMd ||
+              gameData.currentLocation === Location.CitySm
+          ) {
+            gameData.lastCity = gameData.currentLocation;      
+          }
+          gameData.currentMenu = locationToMenu[gameData.currentLocation];
+          gameData.locationSelected = 0;
+          if (
+            Math.random() < -1 &&
+            gameData.currentLocation !== Location.Start &&
+            gameData.currentLocation !== Location.Dummies &&
+            gameData.currentLocation !== Location.TutPort
+          ) {
+            switch (gameData.currentLocation) {
+              case Location.CrossRoad:
+                enterCombat(Enemy.SandFlea, time);
+                break;
+              case Location.Statue:
+                enterCombat(Enemy.SandFlea, time);
+                break;
+              case Location.ForestN:
+              case Location.ForestS:
+              default:
+                enterCombat(Enemy.SandFlea, time);
+            }
+          } else {
+            gameData.state = GameState.Location;
+          }
         }
       }
     } else if (gameData.state === GameState.Combat) {
       gameData.combatMenu.select(gameData);
     } else {
-      if (gameData.isOffline || gameData.currentMenu.freeRoam || gameData.currentMenu.current === "talk" || gameData.currentMenu.currentOptions()[gameData.currentMenu.index].to === "talk") {
+      if (gameData.isOffline || gameData.partyPassword.length === 0 || gameData.currentMenu.freeRoam || gameData.currentMenu.current === "talk" || gameData.currentMenu.currentOptions()[gameData.currentMenu.index].to === "talk") {
         gameData.currentMenu.select(gameData);
       } else if (gameData.isPartyLeader) {
         const selection = gameData.currentMenu.index;
@@ -541,7 +603,7 @@ export function gameTick(time, renderer, input) {
   // Combat
   if (gameData.inCombat) {
 
-    if (gameData.isPartyLeader && gameData.attackSelection.length === 0) {
+    if ((gameData.isPartyLeader || gameData.partyPassword.length === 0) && gameData.attackSelection.length === 0) {
       // Send enemy attack
       const enemyData = gameData.enemy;
       const attackId = Math.floor(Math.random() * enemyData.attacks.length);
@@ -594,15 +656,32 @@ export function gameTick(time, renderer, input) {
           case "attack": {
             let damage = selection.damage;
       
-            gameData.enemy.health -= damage;
+            if (selection.heal) {
+              gameData.health += damage;
+              if (gameData.health > gameData.maxHealth) {
+                gameData.health = gameData.maxHealth;
+              }
+            } else {
+              gameData.enemy.health -= damage;
+            }
             
             // Formatting
             const username = gameData.username === selection.username ? "You" : selection.username;
             if (username.length < 6) {
-              gameData.combatMenu.talk(`${username} did ${damage} dmg`);
+              if (selection.heal) {
+                gameData.combatMenu.talk(`${username}`);
+                gameData.combatMenu.talk(`healed ${damage} dmg`);
+              } else {
+                gameData.combatMenu.talk(`${username} did ${damage} dmg`);
+              }
             } else {
-              gameData.combatMenu.talk(selection.username);
-              gameData.combatMenu.talk(`did ${damage} dmg`);
+              if (selection.heal) {
+                gameData.combatMenu.talk(selection.username);
+                gameData.combatMenu.talk(`healed ${damage} dmg`);
+              } else {
+                gameData.combatMenu.talk(selection.username);
+                gameData.combatMenu.talk(`did ${damage} dmg`);
+              }
             }
             break;
           }

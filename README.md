@@ -21,6 +21,29 @@ barely
 ![game thumbnail](/misc/game.gif)
 
 
+## Local Build
+
+##### Prerequisites
+
+Install [Node](https://nodejs.org/)
+
+##### 1 - Clone Repository
+```
+git clone https://github.com/CoherentNonsense/island-game.git
+```
+##### 2 - Download dependecies
+```
+cd island-game
+npm install
+```
+##### 3 - Run development development server
+```
+npm run dev
+```
+
+Go to [http://localhost:8080/](http://localhost:8080)
+
+
 ## Packet Protocol
 
 Packets start with a packet id and can be followed by numbers and strings

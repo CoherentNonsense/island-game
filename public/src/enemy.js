@@ -1,6 +1,7 @@
 export const Enemy = Object.freeze({
   Dummy: Symbol("symbol"), 
   SandFlea: Symbol("sandflea"),
+  Tumps: Symbol("tumps"),
 });
 
 export const EnemyData = {
@@ -16,11 +17,11 @@ export const EnemyData = {
   },
   [Enemy.SandFlea]: {
     name: "sandflea",
-    health: 8,
+    health: 4,
     gold: 2,
     attacks: [{
-      flavour: ["The sandflea hits", "you for %", "damage"],
-      damage: 3,
+      flavour: ["The sandflea hits", "you for %", "dmg"],
+      damage: 2,
       speed: 100,
     }]
   }
