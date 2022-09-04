@@ -1,7 +1,8 @@
 import Client from "./client.js";
-import { Enemy, EnemyData, enemyToId, idToEnemy } from "./enemy.js";
+import { Enemy, EnemyData, enemyNameToId, enemyToId, idToEnemy } from "./enemy.js";
 import { combatMenuBuilder, locationToMenu, startMenu, titleMenu } from "./menus.js";
 import Packet from "./packet.js";
+import { IdToWeapon, Weapon, WeaponData } from "./weapon.js";
 import { LocationData, Location, worldGraph, LocationToId, IdToLocation, enterLocation, leaveLocation, locations, whereIs } from "./world.js";
 
 export const GameState = Object.freeze({
@@ -34,6 +35,7 @@ const gameData = {
   partyPassword: "",
   // (Bad design) used to store password until we get accepted to party
   waitingPartyPassword: "",
+  partyEnemySelection: {},
 
   talkTutorial: true,
   mapTutorial: true,
@@ -46,7 +48,7 @@ const gameData = {
   currentLocation: null,
   locationSelected: 0,
   
-  items: [{name: "Hands", damage: 3, speed: 5}],
+  items: [Weapon.Hands],
   
   screenAnimStart: 0,
   screenAnimType: "",
@@ -154,7 +156,6 @@ function drawScreenAnim(renderer, time) {
       break;
   }
 }
-
 
 // Main Game Tick
 // --------------
@@ -321,6 +322,41 @@ export function gameTick(time, renderer, input) {
           const enemyId = packet.readNumber();
           const enemy = idToEnemy[enemyId];
           enterCombat(enemy, time);
+        }
+        break;
+      }
+
+      // Party submit attack
+      case 14: {
+        const leaderId = packet.readNumber();
+        if (leaderId === gameData.partyLeader) {
+          const username = packet.readString();
+          const weaponId = packet.readNumber();
+          const damage = packet.readNumber();
+          gameData.attackSelection.push({
+            ...WeaponData[IdToWeapon[weaponId]],
+            server: true,
+            username,
+            damage,
+            type: "attack",
+          });
+        }
+        break;
+      }
+
+      // Party Enemy attack
+      case 15: {
+        const leaderId = packet.readNumber();
+        if (leaderId === gameData.partyLeader && !gameData.isPartyLeader) {
+          const attackId = packet.readNumber();
+          const damage = packet.readNumber();
+          gameData.attackSelection.push({
+            ...gameData.enemy,
+            ...gameData.enemy.attacks[attackId],
+            attackId,
+            damage,
+            type: "enemy",
+          });
         }
         break;
       }
@@ -505,42 +541,58 @@ export function gameTick(time, renderer, input) {
   // Combat
   if (gameData.inCombat) {
 
+    if (gameData.isPartyLeader && gameData.attackSelection.length === 0) {
+      // Send enemy attack
+      const enemyData = gameData.enemy;
+      const attackId = Math.floor(Math.random() * enemyData.attacks.length);
+      const attack = enemyData.attacks[attackId];
+      let damage = (attack.damage === 0) ? 0 : attack.damage + (Math.floor(Math.random() * 3) - 1);
+      const selection = {
+        enemyId: enemyNameToId[enemyData.name],
+        attackId,
+        damage,
+        type: "enemy",
+      }
+      gameData.attackSelection.push({
+        ...gameData.enemy,
+        ...attack,
+        ...selection,
+      });
+      const packet = new Packet().writeNumber(15).writeNumber(gameData.id).writeNumber(attackId).writeNumber(damage);
+      gameData.client.sendPacket(packet);
+    } 
+
     // Handle attacks when ready
     // -------------------------
     // attacks are filled in an array to handle parties
-    if (gameData.attackSelection.length >= gameData.party.length) {
-      // Add enemy attack to the list
-      gameData.attackSelection.push({
-        ...gameData.enemy,
-        type: "enemy",
-      });
+    if (gameData.attackSelection.length > gameData.party.length) {
+      // stuff is differnt if you are party follower
 
-      gameData.attackSelection.sort((a, b) => b.speed - a.speed);
+      gameData.attackSelection.sort((a, b) => {
+        if (b.speed === a.speed) {
+          if (b.username === undefined) {
+            return -1;
+          } else if (a.username === undefined) {
+            return 1;
+          } else {
+            return b.username - a.username;
+          }
+        }
+        return b.speed - a.speed
+      });
 
       gameData.attackSelection.forEach((selection) => {
         if (gameData.enemy.health <= 0 || gameData.health <= 0) return;
 
         switch (selection.type) {
           case "enemy": {
-            if (selection.attacks !== undefined) {
-              const attack = selection.attacks[0];
-              const damage = (attack.damage === 0) ? 0 : attack.damage + (Math.floor(Math.random() * 3) - 1);
-              gameData.health -= damage;
-              if (attack.flavour !== undefined) {
-                attack.flavour.forEach(text => gameData.combatMenu.talk(text));
-              } else {
-                gameData.combatMenu.talk(`You took ${damage} dmg`);
-              }
-            } else {
-              const damage = (selection.damage === 0) ? 0 : selection.damage + (Math.floor(Math.random() * 3) - 1);
-              gameData.health -= damage;
-              gameData.combatMenu.talk(`You took ${damage} dmg`);
-            }
+            gameData.health -= selection.damage;
+            selection.flavour.forEach(text => gameData.combatMenu.talk(text.replace("%", selection.damage)));
             break;
           }
 
           case "attack": {
-            const damage = selection.damage + (Math.floor(Math.random() * 3) - 1);
+            let damage = selection.damage;
       
             gameData.enemy.health -= damage;
             

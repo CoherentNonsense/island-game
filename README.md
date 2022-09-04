@@ -46,7 +46,8 @@ Writing this down here so I can reference it.
 |011|party exists|[partyPassword: string]|
 |012|party leader location selection|[leaderId: number, selection: number]|
 |013|party enter combat|[leaderId: number, monsterId: number]|
-|014|party submit attack|[leaderId: number, ...some attack formatting idek]|
+|014|party submit attack|[leaderId: number, weaponId: number, damage: number]|
+|015|party submit enemy attack (sent by party leader)|[leaderId: number, attackId: number, damage: number]
 |__host messages__|
 |100|update new player with game data|[locationId: number, userId: number, ...repeated for all players, end: -1]
 |__server messages__|

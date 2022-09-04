@@ -7,6 +7,7 @@ import { Location } from "./world.js";
 import { Option, SubMenu, Menu } from "./menu.js";
 import { Enemy } from "./enemy.js";
 import Packet from "./packet.js";
+import { WeaponData, WeaponToId } from "./weapon.js";
 
 export const titleMenu = new Menu({
   
@@ -104,12 +105,17 @@ export const combatMenuBuilder = (game, flavourText) => {
   const itemOptions = [];
 
   game.items.forEach(item => {
-    itemOptions.push(new Option(item.name, "wait", () => {
+    const weapon = WeaponData[item];
+    itemOptions.push(new Option(weapon.name, "wait", () => {
+      let damage = weapon.damage + (Math.floor(Math.random() * 3) - 1);
       game.attackSelection.push({
-        ...item,
+        ...weapon,
+        damage,
         username: game.username,
         type: "attack",
       });
+      const packet = new Packet().writeNumber(14).writeNumber(game.partyLeader).writeString(game.username).writeNumber(WeaponToId[item]).writeNumber(damage);
+      game.client.sendPacket(packet);
     }));
   });
 

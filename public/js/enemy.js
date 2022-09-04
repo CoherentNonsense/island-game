@@ -17,11 +17,15 @@ export const EnemyData = {
   [Enemy.SandFlea]: {
     name: "sandflea",
     health: 8,
-    speed: 50,
-    damage: 2,
     gold: 2,
+    attacks: [{
+      flavour: ["The sandflea hits", "you for %", "damage"],
+      damage: 3,
+      speed: 100,
+    }]
   }
 }
+
 
 export const enemies = [
   Enemy.Dummy,
@@ -29,9 +33,11 @@ export const enemies = [
 ];
 
 export let enemyToId = {};
+export let enemyNameToId = {};
 export let idToEnemy = {};
 
 enemies.forEach((enemy, id) => {
   enemyToId[enemy] = id;
+  enemyNameToId[enemy.name] = id;
   idToEnemy[id] = enemy;
 });
